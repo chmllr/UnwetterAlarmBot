@@ -49,7 +49,7 @@ func main() {
 		}
 	}()
 	http.HandleFunc("/", handler)
-	http.ListenAndServe(":9090", nil)
+	http.ListenAndServe(":9999", nil)
 }
 
 func warning2RSS(title string, text []string) (string, error) {
