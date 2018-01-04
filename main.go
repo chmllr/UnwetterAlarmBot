@@ -70,7 +70,7 @@ func warning2RSS(w *warning) (string, error) {
 	feed.Items = []*feeds.Item{
 		{
 			Title:       w.title,
-			Link:        &feeds.Link{Href: url},
+			Link:        &feeds.Link{Href: fmt.Sprintf("%s&unixTime=%d", url, warnungIssued.Unix())},
 			Description: strings.Join(w.text, "<br>"),
 			Created:     warnungIssued,
 		},
