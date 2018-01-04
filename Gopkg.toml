@@ -24,3 +24,8 @@
 [[constraint]]
   branch = "master"
   name = "github.com/yhat/scrape"
+
+
+[metadata.heroku]
+  root-package = "github.com/chmllr/nepogoda"
+  go-version = "go1.9.2"
