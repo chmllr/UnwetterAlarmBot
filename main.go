@@ -92,7 +92,7 @@ func fetch() (*warning, error) {
 	}
 	content, ok := scrape.Find(root, scrape.ById("content"))
 	if ok {
-		return getText(content)
+		return getWarning(content)
 	}
 
 	return nil, fmt.Errorf("couldn't find content")
@@ -103,7 +103,7 @@ type warning struct {
 	text  []string
 }
 
-func getText(node *html.Node) (*warning, error) {
+func getWarning(node *html.Node) (*warning, error) {
 	text := scrape.TextJoin(node, func(allLines []string) string {
 		lines := []string{}
 		for _, line := range allLines {
