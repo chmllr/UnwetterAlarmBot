@@ -21,7 +21,7 @@ const (
 )
 
 var warnungIssued time.Time
-var rawText string
+var lastWarning string
 var rss atomic.Value
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -36,10 +36,10 @@ func main() {
 			if err != nil {
 				log.Println(err)
 			}
-			rT := title + strings.Join(text, "\n")
-			if rT != rawText {
+			current := title + strings.Join(text, "\n")
+			if current != lastWarning {
 				log.Println("new warning!")
-				rawText = rT
+				lastWarning = current
 				warnungIssued = time.Now()
 				start := time.Now()
 				if rssFeed, err := warning2RSS(title, text); err != nil {
@@ -62,7 +62,7 @@ func warning2RSS(title string, text []string) (string, error) {
 	feed := &feeds.Feed{
 		Title:       "Unwetter Warnung",
 		Link:        &feeds.Link{Href: "https://github.com/chmllr/nepogoda"},
-		Description: "Unwetter Warnung",
+		Description: "Unwetter Warnung für die Schweiz",
 		Author:      &feeds.Author{Name: "Christian Müller", Email: "@drmllr"},
 		Created:     time.Now(),
 	}
@@ -103,9 +103,9 @@ func getText(node *html.Node) (string, []string) {
 	text := scrape.TextJoin(node, func(allLines []string) string {
 		lines := []string{}
 		for _, line := range allLines {
-			r := strings.TrimSpace(line)
-			if r != "" {
-				lines = append(lines, r)
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" {
+				lines = append(lines, trimmed)
 			}
 		}
 		text := strings.Join(lines, "\n")
