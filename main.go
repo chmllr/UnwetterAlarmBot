@@ -32,17 +32,17 @@ func handler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	go func() {
 		for {
-			title, text, err := fetch()
+			warn, err := fetch()
 			if err != nil {
 				log.Println(err)
 			}
-			current := title + strings.Join(text, "\n")
+			current := warn.title + strings.Join(warn.text, "\n")
 			if current != lastWarning {
 				log.Println("new warning!")
 				lastWarning = current
 				warnungIssued = time.Now()
 				start := time.Now()
-				if rssFeed, err := warning2RSS(title, text); err != nil {
+				if rssFeed, err := warning2RSS(warn); err != nil {
 					log.Println(err)
 				} else {
 					rss.Store(rssFeed)
@@ -58,7 +58,7 @@ func main() {
 	http.ListenAndServe(":"+os.Getenv("PORT"), nil)
 }
 
-func warning2RSS(title string, text []string) (string, error) {
+func warning2RSS(w *warning) (string, error) {
 	feed := &feeds.Feed{
 		Title:       "Unwetter Warnung",
 		Link:        &feeds.Link{Href: "https://github.com/chmllr/nepogoda"},
@@ -69,9 +69,9 @@ func warning2RSS(title string, text []string) (string, error) {
 
 	feed.Items = []*feeds.Item{
 		{
-			Title:       title,
+			Title:       w.title,
 			Link:        &feeds.Link{Href: url},
-			Description: strings.Join(text, "<br>"),
+			Description: strings.Join(w.text, "<br>"),
 			Created:     warnungIssued,
 		},
 	}
@@ -79,27 +79,31 @@ func warning2RSS(title string, text []string) (string, error) {
 	return feed.ToRss()
 }
 
-func fetch() (string, []string, error) {
+func fetch() (*warning, error) {
 	resp, err := http.Get(url)
 	if err != nil {
-		return "", nil, fmt.Errorf("couldn't fetch page: %v", err)
+		return nil, fmt.Errorf("couldn't fetch page: %v", err)
 	}
 	defer resp.Body.Close()
 
 	root, err := html.Parse(resp.Body)
 	if err != nil {
-		return "", nil, fmt.Errorf("couldn't parse response: %v", err)
+		return nil, fmt.Errorf("couldn't parse response: %v", err)
 	}
 	content, ok := scrape.Find(root, scrape.ById("content"))
 	if ok {
-		title, text := getText(content)
-		return title, text, nil
+		return getText(content)
 	}
 
-	return "", nil, fmt.Errorf("couldn't find content")
+	return nil, fmt.Errorf("couldn't find content")
 }
 
-func getText(node *html.Node) (string, []string) {
+type warning struct {
+	title string
+	text  []string
+}
+
+func getText(node *html.Node) (*warning, error) {
 	text := scrape.TextJoin(node, func(allLines []string) string {
 		lines := []string{}
 		for _, line := range allLines {
@@ -110,12 +114,19 @@ func getText(node *html.Node) (string, []string) {
 		}
 		text := strings.Join(lines, "\n")
 		re := regexp.MustCompile(`(?m)^(Unwetterwarnung Stufe(.|\s)*)Die Höhen`)
-		text = re.FindAllStringSubmatch(text, -1)[0][1]
+		matches := re.FindAllStringSubmatch(text, -1)
+		if len(matches) < 1 || len(matches[0]) < 2 {
+			return ""
+		}
+		text = matches[0][1]
 		re = regexp.MustCompile(`(?m)^(gültig) (.*)\s+(.*)$`)
 		return re.ReplaceAllString(text, `$1 $2 <b>$3</b>`)
 	})
+	if text == "" {
+		return nil, fmt.Errorf("no warning found")
+	}
 	lines := strings.Split(strings.TrimSpace(text), "\n")
 	lines[len(lines)-2] = "<br>" + lines[len(lines)-2]
 	lines[len(lines)-1] = "<br><i>" + lines[len(lines)-1] + "</i>"
-	return lines[0], lines[1:]
+	return &warning{lines[0], lines[1:]}, nil
 }
