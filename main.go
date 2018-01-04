@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -54,7 +55,7 @@ func main() {
 		}
 	}()
 	http.HandleFunc("/", handler)
-	http.ListenAndServe(":9999", nil)
+	http.ListenAndServe(":"+os.Getenv("PORT"), nil)
 }
 
 func warning2RSS(title string, text []string) (string, error) {
