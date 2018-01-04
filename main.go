@@ -20,9 +20,11 @@ const (
 	interval = 6 * time.Hour
 )
 
-var warnungIssued time.Time
-var lastWarning string
-var rss atomic.Value
+var (
+	lastWarning *warning
+	rss         atomic.Value
+	lastContent string
+)
 
 func handler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
@@ -32,28 +34,30 @@ func handler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	go func() {
 		for {
-			warn, err := fetch()
+			start := time.Now()
+			currentWarning, err := fetch()
 			if err != nil {
-				log.Println(err)
-			}
-			current := warn.title + strings.Join(warn.text, "\n")
-			if current != lastWarning {
+				log.Println("fetch failed:", err)
+			} else if !currentWarning.Equal(lastWarning) {
 				log.Println("new warning!")
-				lastWarning = current
-				warnungIssued = time.Now()
-				start := time.Now()
-				if rssFeed, err := warning2RSS(warn); err != nil {
-					log.Println(err)
+				lastWarning = currentWarning
+				if rssFeed, err := warning2RSS(currentWarning); err != nil {
+					log.Println("rss rendering failed:", err)
 				} else {
 					rss.Store(rssFeed)
 				}
-				log.Println("request took", time.Since(start))
 			} else {
-				log.Println("warning identical; skipping...")
+				log.Println("warnings identical; skipping...")
 			}
+			log.Println("request took", time.Since(start))
 			time.Sleep(interval)
 		}
 	}()
+	if rssFeed, err := warning2RSS(nil); err != nil {
+		panic("couldn't render empty rss feed: " + err.Error())
+	} else {
+		rss.Store(rssFeed)
+	}
 	http.HandleFunc("/", handler)
 	http.ListenAndServe(":"+os.Getenv("PORT"), nil)
 }
@@ -66,16 +70,16 @@ func warning2RSS(w *warning) (string, error) {
 		Author:      &feeds.Author{Name: "Christian Müller", Email: "@drmllr"},
 		Created:     time.Now(),
 	}
-
-	feed.Items = []*feeds.Item{
-		{
-			Title:       w.title,
-			Link:        &feeds.Link{Href: fmt.Sprintf("%s&unixTime=%d", url, warnungIssued.Unix())},
-			Description: strings.Join(w.text, "<br>"),
-			Created:     warnungIssued,
-		},
+	if w != nil {
+		feed.Items = []*feeds.Item{
+			{
+				Title:       w.title,
+				Link:        &feeds.Link{Href: fmt.Sprintf("%s&fetched=%d", url, w.fetched.Unix())},
+				Description: strings.Join(w.text, "<br>"),
+				Created:     w.fetched,
+			},
+		}
 	}
-
 	return feed.ToRss()
 }
 
@@ -99,8 +103,14 @@ func fetch() (*warning, error) {
 }
 
 type warning struct {
-	title string
-	text  []string
+	title   string
+	text    []string
+	fetched time.Time
+}
+
+func (w *warning) Equal(other *warning) bool {
+	return w.title == other.title &&
+		strings.Join(w.text, "") == strings.Join(other.text, "")
 }
 
 func getWarning(node *html.Node) (*warning, error) {
@@ -113,20 +123,29 @@ func getWarning(node *html.Node) (*warning, error) {
 			}
 		}
 		text := strings.Join(lines, "\n")
+		oldContent := lastContent
+		lastContent = text
+		if lastContent == oldContent || strings.Contains(text, "keine Warnung aktiv") {
+			return ""
+		}
 		re := regexp.MustCompile(`(?m)^(Unwetterwarnung Stufe(.|\s)*)Die Höhen`)
 		matches := re.FindAllStringSubmatch(text, -1)
 		if len(matches) < 1 || len(matches[0]) < 2 {
-			return ""
+			return "PARSE_ERROR"
 		}
 		text = matches[0][1]
 		re = regexp.MustCompile(`(?m)^(gültig) (.*)\s+(.*)$`)
 		return re.ReplaceAllString(text, `$1 $2 <b>$3</b>`)
 	})
-	if text == "" {
+	switch text {
+	case "":
 		return nil, fmt.Errorf("no warning found")
+	case "PARSE_ERROR":
+		return &warning{"Neue Wetterwarnung!", []string{url}, time.Now()}, nil
 	}
+
 	lines := strings.Split(strings.TrimSpace(text), "\n")
 	lines[len(lines)-2] = "<br>" + lines[len(lines)-2]
 	lines[len(lines)-1] = "<br><i>" + lines[len(lines)-1] + "</i>"
-	return &warning{lines[0], lines[1:]}, nil
+	return &warning{lines[0], lines[1:], time.Now()}, nil
 }
