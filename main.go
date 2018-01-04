@@ -37,13 +37,18 @@ func main() {
 			}
 			rT := title + strings.Join(text, "\n")
 			if rT != rawText {
+				log.Println("new warning!")
 				rawText = rT
 				warnungIssued = time.Now()
+				start := time.Now()
 				if rssFeed, err := warning2RSS(title, text); err != nil {
 					log.Println(err)
 				} else {
 					rss.Store(rssFeed)
 				}
+				log.Println("request took", time.Since(start))
+			} else {
+				log.Println("warning identical; skipping...")
 			}
 			time.Sleep(interval)
 		}
