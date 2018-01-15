@@ -109,7 +109,7 @@ type warning struct {
 }
 
 func (w *warning) Equal(other *warning) bool {
-	return w.title == other.title &&
+	return other != nil && w.title == other.title &&
 		strings.Join(w.text, "") == strings.Join(other.text, "")
 }
 
@@ -120,6 +120,9 @@ func getWarning(node *html.Node) (*warning, error) {
 			trimmed := strings.TrimSpace(line)
 			if trimmed != "" {
 				lines = append(lines, trimmed)
+			}
+			if strings.Contains(line, "Details zu den Warnstufen") {
+				break
 			}
 		}
 		text := strings.Join(lines, "\n")
