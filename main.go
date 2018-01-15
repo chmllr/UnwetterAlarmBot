@@ -17,7 +17,7 @@ import (
 
 const (
 	url      = "http://alarm.meteocentrale.ch/getwarning_de.php?plz=5621&uwz=UWZ-CH&lang=de"
-	interval = 6 * time.Hour
+	interval = 3 * time.Hour
 )
 
 var (
