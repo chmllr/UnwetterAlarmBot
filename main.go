@@ -75,7 +75,7 @@ func warning2RSS(w *warning) (string, error) {
 			{
 				Title:       w.title,
 				Link:        &feeds.Link{Href: fmt.Sprintf("%s&fetched=%d", url, w.fetched.Unix())},
-				Description: strings.Join(w.text, "<br>"),
+				Description: w.text,
 				Created:     w.fetched,
 			},
 		}
@@ -104,13 +104,12 @@ func fetch() (*warning, error) {
 
 type warning struct {
 	title   string
-	text    []string
+	text    string
 	fetched time.Time
 }
 
 func (w *warning) Equal(other *warning) bool {
-	return other != nil && w.title == other.title &&
-		strings.Join(w.text, "") == strings.Join(other.text, "")
+	return other != nil && w.title == other.title && w.text == other.text
 }
 
 func getWarning(node *html.Node) (*warning, error) {
@@ -121,34 +120,41 @@ func getWarning(node *html.Node) (*warning, error) {
 			if trimmed != "" {
 				lines = append(lines, trimmed)
 			}
-			if strings.Contains(line, "Details zu den Warnstufen") {
-				break
-			}
 		}
 		text := strings.Join(lines, "\n")
-		oldContent := lastContent
-		lastContent = text
-		if lastContent == oldContent || strings.Contains(text, "keine Warnung aktiv") {
-			return ""
-		}
-		re := regexp.MustCompile(`(?m)^(Unwetterwarnung Stufe(.|\s)*)Die Höhen`)
+		re := regexp.MustCompile(`(?m)^Unwetterwarnungen.*\n((.|\s)*)Die Höhen`)
 		matches := re.FindAllStringSubmatch(text, -1)
 		if len(matches) < 1 || len(matches[0]) < 2 {
 			return "PARSE_ERROR"
 		}
 		text = matches[0][1]
-		re = regexp.MustCompile(`(?m)^(gültig) (.*)\s+(.*)$`)
-		return re.ReplaceAllString(text, `$1 $2 <b>$3</b>`)
+
+		oldContent := lastContent
+		lastContent = text
+		if lastContent == oldContent || strings.Contains(text, "keine Warnung aktiv") {
+			return ""
+		}
+
+		re = regexp.MustCompile(`(?m)^\(\d+\)\n((.|\s)*?zuletzt aktualisiert)`)
+		items := re.FindAllString(text, -1)
+
+		warnings := []string{}
+		for _, item := range items {
+			re = regexp.MustCompile(`(?m)^(gültig) (.*)\s+(.*)$`)
+			item = re.ReplaceAllString(item, `$1 $2 <b>$3</b>`)
+			itemLines := strings.Split(item, "\n")
+			itemLines[1] = "<b>" + itemLines[1] + "</b>"
+			l := len(itemLines) - 1
+			itemLines[l] = "<br><i>" + itemLines[l] + "</i>"
+			warnings = append(warnings, strings.Join(itemLines[1:], "<br>\n"))
+		}
+		return strings.Join(warnings, "<br><br>\n")
 	})
 	switch text {
 	case "":
 		return nil, fmt.Errorf("no warning found")
 	case "PARSE_ERROR":
-		return &warning{"Neue Wetterwarnung!", []string{url}, time.Now()}, nil
+		return &warning{"Neue Unwetterwarnung!", url, time.Now()}, nil
 	}
-
-	lines := strings.Split(strings.TrimSpace(text), "\n")
-	lines[len(lines)-2] = "<br>" + lines[len(lines)-2]
-	lines[len(lines)-1] = "<br><i>" + lines[len(lines)-1] + "</i>"
-	return &warning{lines[0], lines[1:], time.Now()}, nil
+	return &warning{"Neue Unwetterwarnung!", text, time.Now()}, nil
 }
