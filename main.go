@@ -17,6 +17,7 @@ import (
 
 const (
 	url      = "http://alarm.meteocentrale.ch/getwarning_de.php?plz=5621&uwz=UWZ-CH&lang=de"
+	testUrl  = "http://localhost:7070/"
 	interval = 3 * time.Hour
 )
 
@@ -84,7 +85,11 @@ func warning2RSS(w *warning) (string, error) {
 }
 
 func fetch() (*warning, error) {
-	resp, err := http.Get(url)
+	effUrl := url
+	if os.Getenv("TEST") != "" {
+		effUrl = testUrl + os.Getenv("PAGE")
+	}
+	resp, err := http.Get(effUrl)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't fetch page: %v", err)
 	}
