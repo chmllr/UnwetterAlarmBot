@@ -22,7 +22,6 @@ const (
 )
 
 var (
-	lastWarning *warning
 	rss         atomic.Value
 	lastContent string
 )
@@ -36,25 +35,22 @@ func main() {
 	go func() {
 		for {
 			start := time.Now()
-			currentWarning, err := fetch()
+			warnings, err := fetch()
 			if err != nil {
 				log.Println("fetch failed:", err)
-			} else if !currentWarning.Equal(lastWarning) {
+			} else {
 				log.Println("new warning!")
-				lastWarning = currentWarning
-				if rssFeed, err := warning2RSS(currentWarning); err != nil {
+				if rssFeed, err := warnings2RSS(warnings); err != nil {
 					log.Println("rss rendering failed:", err)
 				} else {
 					rss.Store(rssFeed)
 				}
-			} else {
-				log.Println("warnings identical; skipping...")
 			}
 			log.Println("request took", time.Since(start))
 			time.Sleep(interval)
 		}
 	}()
-	if rssFeed, err := warning2RSS(nil); err != nil {
+	if rssFeed, err := warnings2RSS(nil); err != nil {
 		panic("couldn't render empty rss feed: " + err.Error())
 	} else {
 		rss.Store(rssFeed)
@@ -63,7 +59,7 @@ func main() {
 	http.ListenAndServe(":"+os.Getenv("PORT"), nil)
 }
 
-func warning2RSS(w *warning) (string, error) {
+func warnings2RSS(ws []*warning) (string, error) {
 	feed := &feeds.Feed{
 		Title:       "Unwetter Warnung",
 		Link:        &feeds.Link{Href: "https://github.com/chmllr/nepogoda"},
@@ -71,20 +67,18 @@ func warning2RSS(w *warning) (string, error) {
 		Author:      &feeds.Author{Name: "Christian Müller", Email: "@drmllr"},
 		Created:     time.Now(),
 	}
-	if w != nil {
-		feed.Items = []*feeds.Item{
-			{
-				Title:       w.title,
-				Link:        &feeds.Link{Href: fmt.Sprintf("%s&fetched=%d", url, w.fetched.Unix())},
-				Description: w.text,
-				Created:     w.fetched,
-			},
-		}
+	for _, w := range ws {
+		feed.Items = append(feed.Items, &feeds.Item{
+			Title:       w.title,
+			Link:        &feeds.Link{Href: fmt.Sprintf("%s&fetched=%d", url, w.fetched.Unix())},
+			Description: fmt.Sprintf("%s<br/><br/><i>%s</i>", w.text, w.issued),
+			Created:     w.fetched,
+		})
 	}
 	return feed.ToRss()
 }
 
-func fetch() (*warning, error) {
+func fetch() ([]*warning, error) {
 	effUrl := url
 	if os.Getenv("TEST") != "" {
 		effUrl = testUrl + os.Getenv("PAGE")
@@ -101,65 +95,71 @@ func fetch() (*warning, error) {
 	}
 	content, ok := scrape.Find(root, scrape.ById("content"))
 	if ok {
-		return getWarning(content)
+		return getWarnings(content)
 	}
 
 	return nil, fmt.Errorf("couldn't find content")
 }
 
 type warning struct {
-	title   string
-	text    string
-	fetched time.Time
+	title, text, issued string
+	fetched             time.Time
 }
 
-func (w *warning) Equal(other *warning) bool {
-	return other != nil && w.title == other.title && w.text == other.text
-}
+func getWarnings(node *html.Node) ([]*warning, error) {
+	text := scrape.TextJoin(node, func(ls []string) string { return strings.Join(ls, "\n") })
 
-func getWarning(node *html.Node) (*warning, error) {
-	text := scrape.TextJoin(node, func(allLines []string) string {
-		lines := []string{}
-		for _, line := range allLines {
-			trimmed := strings.TrimSpace(line)
-			if trimmed != "" {
-				lines = append(lines, trimmed)
-			}
+	lines := []string{}
+	skip := true
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, "Unwetterwarnungen") {
+			skip = false
+			continue
 		}
-		text := strings.Join(lines, "\n")
-		re := regexp.MustCompile(`(?m)^Unwetterwarnungen.*\n((.|\s)*)Die Höhen`)
-		matches := re.FindAllStringSubmatch(text, -1)
-		if len(matches) < 1 || len(matches[0]) < 2 {
-			return "PARSE_ERROR"
+		if skip {
+			continue
 		}
-		text = matches[0][1]
-
-		oldContent := lastContent
-		lastContent = text
-		if lastContent == oldContent || strings.Contains(text, "keine Warnung aktiv") {
-			return ""
+		if strings.Contains(line, "Die Höhenstufen des Bereichs") {
+			break
 		}
-
-		re = regexp.MustCompile(`(?m)^\(\d+\)\n((.|\s)*?zuletzt aktualisiert)`)
-		items := re.FindAllString(text, -1)
-
-		warnings := []string{}
-		for _, item := range items {
-			re = regexp.MustCompile(`(?m)^(gültig) (.*)\s+(.*)$`)
-			item = re.ReplaceAllString(item, `$1 $2 <b>$3</b>`)
-			itemLines := strings.Split(item, "\n")
-			itemLines[1] = "<b>" + itemLines[1] + "</b>"
-			l := len(itemLines) - 1
-			itemLines[l] = "<br><i>" + itemLines[l] + "</i>"
-			warnings = append(warnings, strings.Join(itemLines[1:], "<br>\n"))
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			lines = append(lines, trimmed)
 		}
-		return strings.Join(warnings, "<br><br>\n")
-	})
-	switch text {
-	case "":
-		return nil, fmt.Errorf("no warning found")
-	case "PARSE_ERROR":
-		return &warning{"Neue Unwetterwarnung!", url, time.Now()}, nil
 	}
-	return &warning{"Neue Unwetterwarnung!", text, time.Now()}, nil
+
+	text = strings.Join(lines, "\n")
+	oldContent := lastContent
+	lastContent = text
+	if lastContent == oldContent || strings.Contains(text, "keine Warnung aktiv") {
+		return nil, fmt.Errorf("no warning found")
+	}
+
+	re := regexp.MustCompile(`(?m)^\(\d+\)\n((.|\s)*?zuletzt aktualisiert)`)
+	items := re.FindAllString(text, -1)
+
+	warnings := []*warning{}
+	for _, item := range items {
+		re = regexp.MustCompile(`(?m)^gültig für:\s+?(.*)$`)
+		item = re.ReplaceAllString(item, "")
+		re = regexp.MustCompile(`(?m)^(gültig) (.*)\s+(.*)$`)
+		item = re.ReplaceAllString(item, `$1 $2 <b>$3</b>`)
+		itemLines := strings.Split(item, "\n")
+		title := ""
+		textStart := 0
+		for k, v := range itemLines[1:] {
+			if strings.Contains(v, "gültig") {
+				textStart = k
+				break
+			}
+			title += v + " "
+		}
+		l := len(itemLines) - 1
+		warnings = append(warnings, &warning{
+			title:  title,
+			text:   strings.Join(itemLines[textStart+1:l], "<br>\n"),
+			issued: itemLines[l]})
+	}
+
+	return warnings, nil
 }
