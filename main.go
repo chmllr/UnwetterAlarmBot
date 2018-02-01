@@ -1,14 +1,15 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/yhat/scrape"
 	"golang.org/x/net/html"
 )
@@ -20,16 +21,42 @@ const (
 )
 
 func main() {
-	ws, err := fetch("5621")
+	bot, err := tgbotapi.NewBotAPI(os.Getenv("TOKEN"))
 	if err != nil {
-		panic(err.Error())
+		log.Panic(err)
 	}
 
-	data, err := json.Marshal(ws)
-	if err != nil {
-		panic(err.Error())
+	bot.Debug = true
+
+	log.Printf("Authorized on account %s", bot.Self.UserName)
+
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+
+	updates, err := bot.GetUpdatesChan(u)
+
+	for update := range updates {
+		if update.Message == nil {
+			continue
+		}
+
+		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
+
+		msg := tgbotapi.NewMessage(update.Message.Chat.ID, update.Message.Text)
+		msg.ReplyToMessageID = update.Message.MessageID
+
+		bot.Send(msg)
 	}
-	fmt.Println(string(data))
+	// ws, err := fetch("5621")
+	// if err != nil {
+	// 	panic(err.Error())
+	// }
+
+	// data, err := json.Marshal(ws)
+	// if err != nil {
+	// 	panic(err.Error())
+	// }
+	// fmt.Println(string(data))
 }
 
 func fetch(plz string) ([]*warning, error) {
