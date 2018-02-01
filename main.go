@@ -1,89 +1,43 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
-	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/feeds"
 	"github.com/yhat/scrape"
 	"golang.org/x/net/html"
 )
 
 const (
-	url      = "http://alarm.meteocentrale.ch/getwarning_de.php?plz=5621&uwz=UWZ-CH&lang=de"
-	testUrl  = "http://localhost:7070/"
-	interval = 3 * time.Hour
+	url         = "http://alarm.meteocentrale.ch/getwarning_de.php?plz=%s&uwz=UWZ-CH&lang=de"
+	testBaseUrl = "http://localhost:7070"
+	interval    = 3 * time.Hour
 )
-
-var (
-	rss         atomic.Value
-	lastContent string
-)
-
-func handler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "%s", rss.Load().(string))
-}
 
 func main() {
-	go func() {
-		for {
-			start := time.Now()
-			warnings, err := fetch()
-			if err != nil {
-				log.Println("fetch failed:", err)
-			} else {
-				log.Println("new warning!")
-				if rssFeed, err := warnings2RSS(warnings); err != nil {
-					log.Println("rss rendering failed:", err)
-				} else {
-					rss.Store(rssFeed)
-				}
-			}
-			log.Println("request took", time.Since(start))
-			time.Sleep(interval)
-		}
-	}()
-	if rssFeed, err := warnings2RSS(nil); err != nil {
-		panic("couldn't render empty rss feed: " + err.Error())
-	} else {
-		rss.Store(rssFeed)
+	ws, err := fetch("5621")
+	if err != nil {
+		panic(err.Error())
 	}
-	http.HandleFunc("/", handler)
-	http.ListenAndServe(":"+os.Getenv("PORT"), nil)
+
+	data, err := json.Marshal(ws)
+	if err != nil {
+		panic(err.Error())
+	}
+	fmt.Println(string(data))
 }
 
-func warnings2RSS(ws []*warning) (string, error) {
-	feed := &feeds.Feed{
-		Title:       "Unwetter Warnung",
-		Link:        &feeds.Link{Href: "https://github.com/chmllr/nepogoda"},
-		Description: "Unwetter Warnung für die Schweiz",
-		Author:      &feeds.Author{Name: "Christian Müller", Email: "@drmllr"},
-		Created:     time.Now(),
-	}
-	for _, w := range ws {
-		feed.Items = append(feed.Items, &feeds.Item{
-			Title:       w.title,
-			Link:        &feeds.Link{Href: fmt.Sprintf("%s&fetched=%d", url, w.fetched.Unix())},
-			Description: fmt.Sprintf("%s<br/><br/><i>%s</i>", w.text, w.issued),
-			Created:     w.fetched,
-		})
-	}
-	return feed.ToRss()
-}
-
-func fetch() ([]*warning, error) {
+func fetch(plz string) ([]*warning, error) {
 	effUrl := url
 	if os.Getenv("TEST") != "" {
-		effUrl = testUrl + os.Getenv("PAGE")
+		effUrl = fmt.Sprintf("%s/test_page_%%s_%s.html", testBaseUrl, os.Getenv("PAGE"))
 	}
-	resp, err := http.Get(effUrl)
+	resp, err := http.Get(fmt.Sprintf(effUrl, plz))
 	if err != nil {
 		return nil, fmt.Errorf("couldn't fetch page: %v", err)
 	}
@@ -102,8 +56,8 @@ func fetch() ([]*warning, error) {
 }
 
 type warning struct {
-	title, text, issued string
-	fetched             time.Time
+	Title, Issued string
+	Text          []string
 }
 
 func getWarnings(node *html.Node) ([]*warning, error) {
@@ -129,10 +83,8 @@ func getWarnings(node *html.Node) ([]*warning, error) {
 	}
 
 	text = strings.Join(lines, "\n")
-	oldContent := lastContent
-	lastContent = text
-	if lastContent == oldContent || strings.Contains(text, "keine Warnung aktiv") {
-		return nil, fmt.Errorf("no warning found")
+	if strings.Contains(text, "keine Warnung aktiv") {
+		return nil, nil
 	}
 
 	re := regexp.MustCompile(`(?m)^\(\d+\)\n((.|\s)*?zuletzt aktualisiert)`)
@@ -143,7 +95,7 @@ func getWarnings(node *html.Node) ([]*warning, error) {
 		re = regexp.MustCompile(`(?m)^gültig für:\s+?(.*)$`)
 		item = re.ReplaceAllString(item, "")
 		re = regexp.MustCompile(`(?m)^(gültig) (.*)\s+(.*)$`)
-		item = re.ReplaceAllString(item, `$1 $2 <b>$3</b>`)
+		item = re.ReplaceAllString(item, `$1 $2 *$3*`)
 		itemLines := strings.Split(item, "\n")
 		title := ""
 		textStart := 0
@@ -156,9 +108,9 @@ func getWarnings(node *html.Node) ([]*warning, error) {
 		}
 		l := len(itemLines) - 1
 		warnings = append(warnings, &warning{
-			title:  title,
-			text:   strings.Join(itemLines[textStart+1:l], "<br>\n"),
-			issued: itemLines[l]})
+			Title:  title,
+			Text:   itemLines[textStart+1 : l],
+			Issued: itemLines[l]})
 	}
 
 	return warnings, nil
