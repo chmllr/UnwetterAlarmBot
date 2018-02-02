@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chmllr/nepogoda/data"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/yhat/scrape"
 	"golang.org/x/net/html"
@@ -20,14 +21,12 @@ const (
 	interval    = 3 * time.Hour
 )
 
-type PLZ string
-type subscriberID int
-
-var plz2subs = map[PLZ][]subscriberID{}
-var subscribers = map[subscriberID]struct{}{}
-var plzRE = regexp.MustCompile(`\d\d\d\d`)
+var (
+	plzRE = regexp.MustCompile(`\d\d\d\d`)
+)
 
 func main() {
+	vol := data.Volume{}
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TOKEN"))
 	if err != nil {
 		log.Panic(err)
@@ -49,13 +48,20 @@ func main() {
 
 		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 
-		// errMsg := "Ein Fehler. Bitte noch mal versuchen!"
+		errMsg := "Ein Fehler. Bitte noch mal versuchen!"
 		msg := "NOT IMPLLEMENTED YET LOL"
+		userID := update.Message.From.ID
 		inMsg := update.Message.Text
-		if strings.Contains(inMsg, "abmelden") {
-			msg = unregisteredMessage()
-		} else if plzRE.MatchString(inMsg) {
-			msg = registeredMessage(inMsg)
+		if plzRE.MatchString(inMsg) {
+			if err := vol.Register(userID, inMsg); err != nil {
+				log.Println(err)
+				msg = errMsg
+			} else {
+				msg = registeredMessage(inMsg)
+			}
+		} else if strings.Contains(inMsg, "abmelden") {
+			plzs := vol.Unregister(userID)
+			msg = unregisteredMessage(plzs)
 		} else {
 			msg = startMessage(update.Message.From.FirstName)
 		}
@@ -166,11 +172,11 @@ Bitte gebe Deine Postleitzahl ein.`
 }
 
 func registeredMessage(plz string) string {
-	return `Du bist jetzt für die PLZ "` + plz + `" registriert!
+	return `Du wirst ab jetzt alle Unwetterwarnungen für die PLZ "` + plz + `" von mir erhalten!
 	
 Um sich abzumelden, einfach die Nachricht "abmelden" schicken.`
 }
 
-func unregisteredMessage() string {
-	return "Du bist abgemeldet."
+func unregisteredMessage(plzs int) string {
+	return fmt.Sprintf("Du wurdest von %d PLZ'en abgemeldet.", plzs)
 }

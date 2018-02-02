@@ -22,15 +22,12 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
-  packages = [
-    "html",
-    "html/atom"
-  ]
+  packages = ["html","html/atom"]
   revision = "d866cfc389cec985d6fda2859936a575a55a3ab6"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "ded54c946eb6b20bb0ab13103a13e6e93dc19cb2373a305813944ce1c3c8febd"
+  inputs-digest = "36754098703edcbdb3faf4a6d99d56cea2ebace45ea78fcd30351ee2f72939d0"
   solver-name = "gps-cdcl"
   solver-version = 1
