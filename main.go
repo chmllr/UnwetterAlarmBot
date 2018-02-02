@@ -20,13 +20,20 @@ const (
 	interval    = 3 * time.Hour
 )
 
+type PLZ string
+type subscriberID int
+
+var plz2subs = map[PLZ][]subscriberID{}
+var subscribers = map[subscriberID]struct{}{}
+var plzRE = regexp.MustCompile(`\d\d\d\d`)
+
 func main() {
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TOKEN"))
 	if err != nil {
 		log.Panic(err)
 	}
 
-	bot.Debug = true
+	bot.Debug = os.Getenv("DEBUG_MODE") != ""
 
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
@@ -42,10 +49,18 @@ func main() {
 
 		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, update.Message.Text)
-		msg.ReplyToMessageID = update.Message.MessageID
+		// errMsg := "Ein Fehler. Bitte noch mal versuchen!"
+		msg := "NOT IMPLLEMENTED YET LOL"
+		inMsg := update.Message.Text
+		if strings.Contains(inMsg, "abmelden") {
+			msg = unregisteredMessage()
+		} else if plzRE.MatchString(inMsg) {
+			msg = registeredMessage(inMsg)
+		} else {
+			msg = startMessage(update.Message.From.FirstName)
+		}
 
-		bot.Send(msg)
+		bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, msg))
 	}
 	// ws, err := fetch("5621")
 	// if err != nil {
@@ -61,7 +76,7 @@ func main() {
 
 func fetch(plz string) ([]*warning, error) {
 	effUrl := url
-	if os.Getenv("TEST") != "" {
+	if os.Getenv("DEBUG_MODE") != "" {
 		effUrl = fmt.Sprintf("%s/test_page_%%s_%s.html", testBaseUrl, os.Getenv("PAGE"))
 	}
 	resp, err := http.Get(fmt.Sprintf(effUrl, plz))
@@ -141,4 +156,21 @@ func getWarnings(node *html.Node) ([]*warning, error) {
 	}
 
 	return warnings, nil
+}
+
+func startMessage(name string) string {
+	return `Hello ` + name + `!
+Dieser Bot liefert Unwetterwarnungen für die Schweiz.
+
+Bitte gebe Deine Postleitzahl ein.`
+}
+
+func registeredMessage(plz string) string {
+	return `Du bist jetzt für die PLZ "` + plz + `" registriert!
+	
+Um sich abzumelden, einfach die Nachricht "abmelden" schicken.`
+}
+
+func unregisteredMessage() string {
+	return "Du bist abgemeldet."
 }
