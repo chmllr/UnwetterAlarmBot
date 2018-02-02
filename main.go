@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/md5"
 	"fmt"
 	"log"
 	"net/http"
@@ -27,6 +28,11 @@ var (
 
 func main() {
 	vol := data.Volume{}
+	cache := map[string]string{}
+
+	warningStream := make(chan *PLZWarnings)
+	go fetchRoutine(warningStream, 5*time.Second, vol)
+
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TOKEN"))
 	if err != nil {
 		log.Panic(err)
@@ -40,44 +46,79 @@ func main() {
 	u.Timeout = 60
 
 	updates, err := bot.GetUpdatesChan(u)
-
-	for update := range updates {
-		if update.Message == nil {
-			continue
-		}
-
-		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
-
-		errMsg := "Ein Fehler. Bitte noch mal versuchen!"
-		msg := "NOT IMPLLEMENTED YET LOL"
-		userID := update.Message.From.ID
-		inMsg := update.Message.Text
-		if plzRE.MatchString(inMsg) {
-			if err := vol.Register(userID, inMsg); err != nil {
-				log.Println(err)
-				msg = errMsg
-			} else {
-				msg = registeredMessage(inMsg)
-			}
-		} else if strings.Contains(inMsg, "abmelden") {
-			plzs := vol.Unregister(userID)
-			msg = unregisteredMessage(plzs)
-		} else {
-			msg = startMessage(update.Message.From.FirstName)
-		}
-
-		bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, msg))
+	if err != nil {
+		panic(err.Error())
 	}
-	// ws, err := fetch("5621")
-	// if err != nil {
-	// 	panic(err.Error())
-	// }
 
-	// data, err := json.Marshal(ws)
-	// if err != nil {
-	// 	panic(err.Error())
-	// }
-	// fmt.Println(string(data))
+	for {
+		select {
+		case warning := <-warningStream:
+			subscribers := vol.Subscribers(warning.plz)
+			hash := ""
+			for _, w := range warning.warnings {
+				hash = hash + w.Hash()
+			}
+			if cache[warning.plz] == hash {
+				continue
+			}
+			cache[warning.plz] = hash
+			for _, s := range subscribers {
+				for _, w := range warning.warnings {
+					msg := tgbotapi.NewMessage(s.ChatID, w.String())
+					msg.ParseMode = "Markdown"
+					bot.Send(msg)
+				}
+			}
+		case update := <-updates:
+			if update.Message == nil {
+				break
+			}
+
+			log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
+
+			var msg string
+			userID := update.Message.From.ID
+			inMsg := update.Message.Text
+			if plzRE.MatchString(inMsg) {
+				if err := vol.Register(userID, update.Message.Chat.ID, inMsg); err != nil {
+					log.Println(err)
+					msg = "Ich konnte dich nicht für diese PLZ anmelden!"
+				} else {
+					msg = registeredMessage(inMsg)
+				}
+			} else if strings.Contains(inMsg, "abmelden") {
+				plzs := vol.Unregister(userID)
+				msg = unregisteredMessage(plzs)
+			} else {
+				msg = startMessage(update.Message.From.FirstName)
+			}
+
+			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, msg))
+		}
+	}
+
+}
+
+type PLZWarnings struct {
+	plz      string
+	warnings []*warning
+}
+
+func fetchRoutine(stream chan *PLZWarnings, t time.Duration, vol data.Volume) {
+	for {
+		start := time.Now()
+		plzs := vol.PLZs()
+		for _, plz := range plzs {
+			ws, err := fetch(plz)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			stream <- &PLZWarnings{plz, ws}
+		}
+		log.Printf("fetched %d PLZs in %s\n", len(plzs), time.Since(start))
+		time.Sleep(t)
+	}
 }
 
 func fetch(plz string) ([]*warning, error) {
@@ -99,13 +140,20 @@ func fetch(plz string) ([]*warning, error) {
 	if ok {
 		return getWarnings(content)
 	}
-
 	return nil, fmt.Errorf("couldn't find content")
 }
 
 type warning struct {
 	Title, Issued string
 	Text          []string
+}
+
+func (w *warning) String() string {
+	return fmt.Sprintf("*%s*\n\n%s\n\n_%s_", w.Title, strings.Join(w.Text, "\n"), w.Issued)
+}
+
+func (w *warning) Hash() string {
+	return fmt.Sprintf("%x", md5.Sum([]byte(w.String())))
 }
 
 func getWarnings(node *html.Node) ([]*warning, error) {

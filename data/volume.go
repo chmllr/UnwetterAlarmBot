@@ -1,17 +1,24 @@
 package data
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
-type Volume map[string][]int
+type Subscriber struct {
+	UserID int
+	ChatID int64
+}
+type Volume map[string][]Subscriber
 
-func (db Volume) Register(userID int, plz string) error {
+func (db Volume) Register(userID int, chatID int64, plz string) error {
 	subscribers := db[plz]
 	for _, v := range subscribers {
-		if v == userID {
+		if v.UserID == userID {
 			return fmt.Errorf("user %d is already subscribed to PLZ %q", userID, plz)
 		}
 	}
-	db[plz] = append(subscribers, userID)
+	db[plz] = append(subscribers, Subscriber{userID, chatID})
 	return nil
 }
 
@@ -20,7 +27,7 @@ func (db Volume) Unregister(userID int) int {
 L:
 	for plz, subscribers := range db {
 		for i, v := range subscribers {
-			if v == userID {
+			if v.UserID == userID {
 				db[plz] = append(subscribers[0:i], subscribers[i+1:]...)
 				plzs++
 				continue L
@@ -30,7 +37,7 @@ L:
 	return plzs
 }
 
-func (db Volume) subscribers(plz string) []int {
+func (db Volume) Subscribers(plz string) []Subscriber {
 	return db[plz]
 }
 
@@ -41,5 +48,6 @@ func (db Volume) PLZs() (plzs []string) {
 		}
 		plzs = append(plzs, plz)
 	}
+	sort.Strings(plzs)
 	return
 }
