@@ -63,7 +63,12 @@ type Warning struct {
 }
 
 func (w *Warning) String() string {
-	return fmt.Sprintf("*%s*\n\n%s\n\n_%s_", w.Title, strings.Join(w.Text, "\n"), w.Issued)
+	text := strings.Join(w.Text, "\n")
+	re := regexp.MustCompile(`(?m)^gültig für:\s+?(.*)$`)
+	text = re.ReplaceAllString(text, "")
+	re = regexp.MustCompile(`(?m)^(gültig.*):\s+(.*)$`)
+	text = re.ReplaceAllString(text, `*$1*: $2`)
+	return fmt.Sprintf("*%s*\n\n%s\n\n_%s_", w.Title, text, w.Issued)
 }
 
 func (w *Warning) Hash() string {
@@ -111,23 +116,19 @@ func scrapeWarnings(body io.Reader) ([]*Warning, error) {
 
 	warnings := []*Warning{}
 	for _, item := range items {
-		re = regexp.MustCompile(`(?m)^gültig für:\s+?(.*)$`)
-		item = re.ReplaceAllString(item, "")
-		re = regexp.MustCompile(`(?m)^(gültig) (.*)\s+(.*)$`)
-		item = re.ReplaceAllString(item, `$1 $2 *$3*`)
 		itemLines := strings.Split(item, "\n")
-		title := ""
+		title := []string{}
 		textStart := 0
 		for k, v := range itemLines[1:] {
 			if strings.Contains(v, "gültig") {
 				textStart = k
 				break
 			}
-			title += v + " "
+			title = append(title, strings.TrimSpace(v))
 		}
 		l := len(itemLines) - 1
 		warnings = append(warnings, &Warning{
-			Title:  title,
+			Title:  strings.Join(title, " "),
 			Text:   itemLines[textStart+1 : l],
 			Issued: itemLines[l]})
 	}
