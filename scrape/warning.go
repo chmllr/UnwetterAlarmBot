@@ -48,15 +48,17 @@ func FetchLoop(stream chan *PLZWarnings, t time.Duration, vol storage.Volume) {
 	for {
 		start := time.Now()
 		plzs := vol.PLZs()
+		wsFetched := 0
 		for _, plz := range plzs {
 			ws, err := fetch(plz)
 			if err != nil {
 				log.Println(err)
 				continue
 			}
+			wsFetched += len(ws)
 			stream <- &PLZWarnings{plz, ws}
 		}
-		log.Printf("fetched %d PLZs in %s\n", len(plzs), time.Since(start))
+		log.Printf("fetched %d warnings in %d PLZs in %s\n", wsFetched, len(plzs), time.Since(start))
 		time.Sleep(t)
 	}
 }
