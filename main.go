@@ -19,19 +19,17 @@ var (
 
 func main() {
 	vol := storage.Volume{}
-	err := vol.Load("volume.json")
-	if err != nil {
+	if err := vol.Load("volume.json"); err != nil {
 		panic(err.Error())
 	}
 
 	cache := storage.Cache{}
-	err = cache.Load("cache.json")
-	if err != nil {
+	if err := cache.Load("cache.json"); err != nil {
 		panic(err.Error())
 	}
 
-	warningsStream := make(chan *scrape.PLZWarnings)
-	go scrape.FetchLoop(warningsStream, 5*time.Second, vol)
+	warnings := make(chan *scrape.PLZWarnings)
+	go scrape.FetchLoop(warnings, 2*time.Hour, vol)
 
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TOKEN"))
 	if err != nil {
@@ -50,18 +48,18 @@ func main() {
 
 	for {
 		select {
-		case warnings := <-warningsStream:
-			if len(warnings.Warnings) == 0 {
-				cache.Clear(warnings.PLZ)
+		case update := <-warnings:
+			if len(update.Warnings) == 0 {
+				cache.Clear(update.PLZ)
 				break
 			}
-			subscribers := vol.Subscribers(warnings.PLZ)
-			for _, w := range warnings.Warnings {
+			subscribers := vol.Subscribers(update.PLZ)
+			for _, w := range update.Warnings {
 				hash := w.Hash()
-				if cache.Has(warnings.PLZ, hash) {
+				if cache.Has(update.PLZ, hash) {
 					continue
 				}
-				cache.Set(warnings.PLZ, hash)
+				cache.Set(update.PLZ, hash)
 				for _, s := range subscribers {
 					msg := tgbotapi.NewMessage(s.ChatID, w.String())
 					msg.ParseMode = "Markdown"
@@ -72,30 +70,23 @@ func main() {
 			if update.Message == nil {
 				break
 			}
-
 			log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
-
-			var msg string
+			msg := message.Start(update.Message.From.FirstName)
 			userID := update.Message.From.ID
 			inMsg := update.Message.Text
 			if plzRE.MatchString(inMsg) {
+				msg = message.Registered(inMsg)
 				if err := vol.Register(userID, update.Message.Chat.ID, inMsg); err != nil {
 					log.Println(err)
 					msg = "Ich konnte dich nicht für diese PLZ anmelden!"
-				} else {
-					msg = message.Registered(inMsg)
 				}
 			} else if strings.Contains(inMsg, "abmelden") {
 				plzs, err := vol.Unregister(userID)
 				msg = message.Unregistered(plzs)
 				if err != nil {
-					msg = message.Error()
+					msg = message.Error
 				}
-
-			} else {
-				msg = message.Start(update.Message.From.FirstName)
 			}
-
 			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, msg))
 		}
 	}

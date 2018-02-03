@@ -19,8 +19,25 @@ import (
 const (
 	url         = "http://alarm.meteocentrale.ch/getwarning_de.php?plz=%s&uwz=UWZ-CH&lang=de"
 	testBaseUrl = "http://localhost:7070"
-	interval    = 2 * time.Hour
 )
+
+type Warning struct {
+	Title, Issued string
+	Text          []string
+}
+
+func (w *Warning) String() string {
+	text := strings.Join(w.Text, "\n")
+	re := regexp.MustCompile(`(?m)^gültig für:\s+?(.*)$`)
+	text = re.ReplaceAllString(text, "")
+	re = regexp.MustCompile(`(?m)^(gültig.*):\s+(.*)$`)
+	text = re.ReplaceAllString(text, `*$1*: $2`)
+	return fmt.Sprintf("*%s*\n\n%s\n\n_%s_", w.Title, text, w.Issued)
+}
+
+func (w *Warning) Hash() string {
+	return fmt.Sprintf("%x", md5.Sum([]byte(w.String())))
+}
 
 type PLZWarnings struct {
 	PLZ      string
@@ -55,24 +72,6 @@ func fetch(plz string) ([]*Warning, error) {
 	}
 	defer resp.Body.Close()
 	return scrapeWarnings(resp.Body)
-}
-
-type Warning struct {
-	Title, Issued string
-	Text          []string
-}
-
-func (w *Warning) String() string {
-	text := strings.Join(w.Text, "\n")
-	re := regexp.MustCompile(`(?m)^gültig für:\s+?(.*)$`)
-	text = re.ReplaceAllString(text, "")
-	re = regexp.MustCompile(`(?m)^(gültig.*):\s+(.*)$`)
-	text = re.ReplaceAllString(text, `*$1*: $2`)
-	return fmt.Sprintf("*%s*\n\n%s\n\n_%s_", w.Title, text, w.Issued)
-}
-
-func (w *Warning) Hash() string {
-	return fmt.Sprintf("%x", md5.Sum([]byte(w.String())))
 }
 
 func scrapeWarnings(body io.Reader) ([]*Warning, error) {

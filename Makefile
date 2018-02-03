@@ -7,3 +7,5 @@ test:
 fake:
 	http-server -p 7070 . &
 
+clean:
+	rm volume.json cache.json

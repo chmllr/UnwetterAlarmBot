@@ -19,6 +19,4 @@ func Unregistered(plzs int) string {
 	return fmt.Sprintf("Du wurdest von %d PLZ'en abgemeldet.", plzs)
 }
 
-func Error() string {
-	return "Oops, ein Fehler!"
-}
+const Error = "Oops, ein Fehler!"

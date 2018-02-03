@@ -24,7 +24,7 @@ var volFile string
 func (v *Volume) Load(path string) error {
 	v.db = map[string][]Subscriber{}
 	volFile = path
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	if _, err := os.Stat(volFile); os.IsNotExist(err) {
 		return nil
 	}
 	data, err := ioutil.ReadFile(volFile)

@@ -12,10 +12,10 @@ type Cache map[string]map[string]bool
 
 func (c Cache) Load(path string) error {
 	cacheFile = path
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	if _, err := os.Stat(cacheFile); os.IsNotExist(err) {
 		return nil
 	}
-	data, err := ioutil.ReadFile(path)
+	data, err := ioutil.ReadFile(cacheFile)
 	if err != nil {
 		return err
 	}
