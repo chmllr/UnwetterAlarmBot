@@ -8,6 +8,7 @@ import (
 func Test_Volume(t *testing.T) {
 
 	vol := Volume{}
+	vol.Load("")
 
 	user_1 := 1
 	user_2 := 2

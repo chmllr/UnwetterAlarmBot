@@ -19,10 +19,11 @@ var (
 
 func main() {
 	vol := storage.Volume{}
-	cache := map[string]string{}
+	vol.Load("")
+	cache := storage.Cache{}
 
-	warningStream := make(chan *scrape.PLZWarnings)
-	go scrape.FetchLoop(warningStream, 5*time.Second, vol)
+	warningsStream := make(chan *scrape.PLZWarnings)
+	go scrape.FetchLoop(warningsStream, 5*time.Second, vol)
 
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TOKEN"))
 	if err != nil {
@@ -43,18 +44,19 @@ func main() {
 
 	for {
 		select {
-		case warning := <-warningStream:
-			subscribers := vol.Subscribers(warning.PLZ)
-			hash := ""
-			for _, w := range warning.Warnings {
-				hash = hash + w.Hash()
+		case warnings := <-warningsStream:
+			if len(warnings.Warnings) == 0 {
+				cache.Clear(warnings.PLZ)
+				break
 			}
-			if cache[warning.PLZ] == hash {
-				continue
-			}
-			cache[warning.PLZ] = hash
-			for _, s := range subscribers {
-				for _, w := range warning.Warnings {
+			subscribers := vol.Subscribers(warnings.PLZ)
+			for _, w := range warnings.Warnings {
+				hash := w.Hash()
+				if cache.Has(warnings.PLZ, hash) {
+					continue
+				}
+				cache.Set(warnings.PLZ, hash)
+				for _, s := range subscribers {
 					msg := tgbotapi.NewMessage(s.ChatID, w.String())
 					msg.ParseMode = "Markdown"
 					bot.Send(msg)

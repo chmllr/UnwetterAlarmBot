@@ -3,32 +3,44 @@ package storage
 import (
 	"fmt"
 	"sort"
+	"sync"
 )
 
 type Subscriber struct {
 	UserID int
 	ChatID int64
 }
-type Volume map[string][]Subscriber
+type Volume struct {
+	db    map[string][]Subscriber
+	mutex sync.Mutex
+}
 
-func (db Volume) Register(userID int, chatID int64, plz string) error {
-	subscribers := db[plz]
+func (v *Volume) Load(file string) {
+	v.db = map[string][]Subscriber{}
+}
+
+func (v *Volume) Register(userID int, chatID int64, plz string) error {
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+	subscribers := v.db[plz]
 	for _, v := range subscribers {
 		if v.UserID == userID {
 			return fmt.Errorf("user %d is already subscribed to PLZ %q", userID, plz)
 		}
 	}
-	db[plz] = append(subscribers, Subscriber{userID, chatID})
+	v.db[plz] = append(subscribers, Subscriber{userID, chatID})
 	return nil
 }
 
-func (db Volume) Unregister(userID int) int {
+func (v *Volume) Unregister(userID int) int {
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
 	plzs := 0
 L:
-	for plz, subscribers := range db {
-		for i, v := range subscribers {
-			if v.UserID == userID {
-				db[plz] = append(subscribers[0:i], subscribers[i+1:]...)
+	for plz, subscribers := range v.db {
+		for i, s := range subscribers {
+			if s.UserID == userID {
+				v.db[plz] = append(subscribers[0:i], subscribers[i+1:]...)
 				plzs++
 				continue L
 			}
@@ -37,12 +49,16 @@ L:
 	return plzs
 }
 
-func (db Volume) Subscribers(plz string) []Subscriber {
-	return db[plz]
+func (v *Volume) Subscribers(plz string) []Subscriber {
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+	return v.db[plz]
 }
 
-func (db Volume) PLZs() (plzs []string) {
-	for plz, subscribers := range db {
+func (v *Volume) PLZs() (plzs []string) {
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+	for plz, subscribers := range v.db {
 		if len(subscribers) == 0 {
 			continue
 		}
