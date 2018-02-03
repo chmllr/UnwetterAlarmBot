@@ -66,7 +66,12 @@ L:
 	for plz, subscribers := range v.db {
 		for i, s := range subscribers {
 			if s.UserID == userID {
-				v.db[plz] = append(subscribers[0:i], subscribers[i+1:]...)
+				tmp := append(subscribers[0:i], subscribers[i+1:]...)
+				if len(tmp) > 0 {
+					v.db[plz] = tmp
+				} else {
+					delete(v.db, plz)
+				}
 				plzs++
 				continue L
 			}

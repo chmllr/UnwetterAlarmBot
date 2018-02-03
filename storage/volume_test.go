@@ -50,7 +50,7 @@ func Test_Volume(t *testing.T) {
 		t.Fatalf("user %d should have been unregistered for %d plzs, but got %d", user_1, wantPlzs, plzs)
 	}
 
-	exp = []Subscriber{}
+	exp = nil
 	got = vol.Subscribers(plz_5621)
 	if !reflect.DeepEqual(got, exp) {
 		t.Fatalf("subscribers for PLZ %q expected %v, but got %v", plz_5621, exp, got)
@@ -81,7 +81,7 @@ func Test_Volume(t *testing.T) {
 
 	vol.Unregister(user_1)
 	vol.Unregister(user_3)
-	exp = []Subscriber{}
+	exp = nil
 	got = vol.Subscribers(plz_5621)
 	if !reflect.DeepEqual(got, exp) {
 		t.Fatalf("subscribers for PLZ %q expected %v, but got %v", plz_5621, exp, got)
