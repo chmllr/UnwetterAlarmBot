@@ -18,3 +18,7 @@ Um sich abzumelden, einfach die Nachricht "abmelden" schicken.`
 func Unregistered(plzs int) string {
 	return fmt.Sprintf("Du wurdest von %d PLZ'en abgemeldet.", plzs)
 }
+
+func Error() string {
+	return "Oops, ein Fehler!"
+}

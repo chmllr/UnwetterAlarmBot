@@ -6,6 +6,7 @@ import (
 
 func TestCache(t *testing.T) {
 	c := Cache{}
+	c.Load("cache.json")
 	c.Set("5621", "xxx")
 	c.Set("5621", "yyy")
 	c.Set("8045", "zzz")

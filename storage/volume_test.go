@@ -8,7 +8,7 @@ import (
 func Test_Volume(t *testing.T) {
 
 	vol := Volume{}
-	vol.Load("")
+	vol.Load("volume.json")
 
 	user_1 := 1
 	user_2 := 2
@@ -32,7 +32,7 @@ func Test_Volume(t *testing.T) {
 		t.Fatalf("PLZs wanted %v, got %v", plzsWant, plzsGot)
 	}
 
-	plzs := vol.Unregister(user_2)
+	plzs, err := vol.Unregister(user_2)
 	wantPlzs := 0
 	if plzs != wantPlzs {
 		t.Fatalf("user %d should have been unregistered for %d plzs, but got %d", user_2, wantPlzs, plzs)
@@ -44,7 +44,7 @@ func Test_Volume(t *testing.T) {
 		t.Fatalf("subscribers for PLZ %q expected %v, but got %v", plz_5621, exp, got)
 	}
 
-	plzs = vol.Unregister(user_1)
+	plzs, err = vol.Unregister(user_1)
 	wantPlzs = 2
 	if plzs != wantPlzs {
 		t.Fatalf("user %d should have been unregistered for %d plzs, but got %d", user_1, wantPlzs, plzs)

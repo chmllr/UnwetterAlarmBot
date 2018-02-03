@@ -19,8 +19,16 @@ var (
 
 func main() {
 	vol := storage.Volume{}
-	vol.Load("")
+	err := vol.Load("volume.json")
+	if err != nil {
+		panic(err.Error())
+	}
+
 	cache := storage.Cache{}
+	err = cache.Load("cache.json")
+	if err != nil {
+		panic(err.Error())
+	}
 
 	warningsStream := make(chan *scrape.PLZWarnings)
 	go scrape.FetchLoop(warningsStream, 5*time.Second, vol)
@@ -29,8 +37,6 @@ func main() {
 	if err != nil {
 		log.Panic(err)
 	}
-
-	bot.Debug = os.Getenv("DEBUG_MODE") != ""
 
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
@@ -80,8 +86,12 @@ func main() {
 					msg = message.Registered(inMsg)
 				}
 			} else if strings.Contains(inMsg, "abmelden") {
-				plzs := vol.Unregister(userID)
+				plzs, err := vol.Unregister(userID)
 				msg = message.Unregistered(plzs)
+				if err != nil {
+					msg = message.Error()
+				}
+
 			} else {
 				msg = message.Start(update.Message.From.FirstName)
 			}

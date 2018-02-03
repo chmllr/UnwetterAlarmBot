@@ -1,7 +1,10 @@
 package storage
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"sort"
 	"sync"
 )
@@ -10,13 +13,36 @@ type Subscriber struct {
 	UserID int
 	ChatID int64
 }
+
 type Volume struct {
 	db    map[string][]Subscriber
 	mutex sync.Mutex
 }
 
-func (v *Volume) Load(file string) {
+var volFile string
+
+func (v *Volume) Load(path string) error {
 	v.db = map[string][]Subscriber{}
+	volFile = path
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil
+	}
+	data, err := ioutil.ReadFile(volFile)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, &v.db)
+}
+
+func (v *Volume) Persist() error {
+	if volFile == "" {
+		panic("no file for volume persistence specified")
+	}
+	data, err := json.Marshal(v.db)
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(volFile, data, 0644)
 }
 
 func (v *Volume) Register(userID int, chatID int64, plz string) error {
@@ -29,10 +55,10 @@ func (v *Volume) Register(userID int, chatID int64, plz string) error {
 		}
 	}
 	v.db[plz] = append(subscribers, Subscriber{userID, chatID})
-	return nil
+	return v.Persist()
 }
 
-func (v *Volume) Unregister(userID int) int {
+func (v *Volume) Unregister(userID int) (int, error) {
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 	plzs := 0
@@ -46,7 +72,7 @@ L:
 			}
 		}
 	}
-	return plzs
+	return plzs, v.Persist()
 }
 
 func (v *Volume) Subscribers(plz string) []Subscriber {
