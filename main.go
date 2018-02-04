@@ -60,8 +60,9 @@ func main() {
 					continue
 				}
 				cache.Set(update.PLZ, hash)
+				text := w.String()
 				for _, s := range subscribers {
-					msg := tgbotapi.NewMessage(s.ChatID, w.String())
+					msg := tgbotapi.NewMessage(s.ChatID, text)
 					msg.ParseMode = "Markdown"
 					bot.Send(msg)
 				}
