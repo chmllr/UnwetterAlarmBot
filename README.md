@@ -1,3 +1,3 @@
-# nepogoda
+# UnwetterAlarmBot
 
-A scrapper for `http://alarm.meteocentrale.ch`.
+A Telegram bot scrapping `alarm.meteocentrale.ch` and notifying you for the given PLZ about all relevant weather warnings.
